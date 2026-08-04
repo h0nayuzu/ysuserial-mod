@@ -4,7 +4,7 @@
 
     <groupId>ysuserial</groupId>
     <artifactId>ysuserial</artifactId>
-    <version>su18-mod-1.7</version>
+    <version>su18-mod-1.8</version>
     <packaging>jar</packaging>
 
     <name>ysuserial</name>
