@@ -73,6 +73,17 @@ public class Config {
 	// ScriptEngineManager 是否为 RHINO 引擎
 	public static boolean USING_RHINO = false;
 
+	// Fastjson 1.2.83 getResourceAsStream 模式：输出带 @JSONType(asm=false) 的 class 文件
+	public static Boolean FASTJSON_83_MODE      = false;
+	public static String  FASTJSON_83_LHOST     = "127.0.0.1";
+	public static int     FASTJSON_83_LPORT     = 19090;
+	public static String  FASTJSON_83_CLASSNAME = "a";
+	public static String  FASTJSON_83_OUTPUT    = "";  // 输出文件路径
+	public static String  FASTJSON_83_MODE_TYPE = "jdk8-http"; // jdk8-http | fd
+	public static int     FASTJSON_83_MAX_FD    = 256;  // fd 模式最大探测 fd 数
+	public static String  FASTJSON_83_TAG       = "";   // 类名标签
+	public static String  FASTJSON_83_WWW_DIR   = "";   // www 目录（fd 模式存放 probe.jar）
+
 	public static ClassPool POOL = ClassPool.getDefault();
 
 	// 不同类型内存马的父类/接口与其关键参数的映射
