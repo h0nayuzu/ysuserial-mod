@@ -283,9 +283,9 @@ public class Fastjson83Util {
         String payloadHost = toPayloadHost(lhost);
 
         // 计算名称
-        String probeName = tag.isEmpty() ? "probe" : "probe_" + tag;
-        String firstClass = tag.isEmpty() ? "Exception" : "T" + tag + "Exception";
-        String fdClass = tag.isEmpty() ? "Exception" : "T" + tag + "Exception";
+        String probeName = tag.isEmpty() ? "fd" : "fd_" + tag;
+        String firstClass = tag.isEmpty() ? "Exception" : tag + "Exception";
+        String fdClass = tag.isEmpty() ? "Exception" : tag + "Exception";
 
         // 创建 www 目录
         Path wwwPath = Paths.get(wwwDir);
@@ -338,9 +338,9 @@ public class Fastjson83Util {
         tag = cleanTag(tag);
         String payloadHost = toPayloadHost(lhost);
 
-        String probeName = tag.isEmpty() ? "probe" : "probe_" + tag;
-        String firstClass = tag.isEmpty() ? "Exception" : "T" + tag + "Exception";
-        String fdClass = tag.isEmpty() ? "Exception" : "T" + tag + "Exception";
+        String probeName = tag.isEmpty() ? "fd" : "fd_" + tag;
+        String firstClass = tag.isEmpty() ? "Exception" : tag + "Exception";
+        String fdClass = tag.isEmpty() ? "Exception" : tag + "Exception";
 
         Path wwwPath = Paths.get(wwwDir);
         Files.createDirectories(wwwPath);
